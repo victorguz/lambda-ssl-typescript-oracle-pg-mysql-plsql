@@ -1,0 +1,115 @@
+service: nestjs-lambda
+frameworkVersion: '2'
+provider:
+  name: aws
+  endpointType: REGIONAL
+  runtime: nodejs14.x
+  stage: ${opt:stage,'dev'}
+  lambdaHashingVersion: 20201221
+  iam:
+    role: arn:aws:iam::864673161229:role/lambda_cron_rol
+  memorySize: ${self:custom.MEMORYSIZE.${self:provider.stage}}
+  timeout: 900
+  deploymentBucket:
+    name: app-vendedor-staging
+package:
+  excludeDevDependencies: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+custom:
+  stages:
+    - dev
+    - qas
+    - prd
+  NODE_ENV:
+    dev: dev
+    qas: qas
+    prd: prd
+  JAMAR_DB_MEC_EXTENDED_HOST:
+    dev: ${ssm:JAMAR_DB_MEC_EXTENDED_HOST_DEV}
+    qas: ${ssm:JAMAR_DB_MEC_EXTENDED_HOST_PRD}
+    prd: ${ssm:JAMAR_DB_MEC_EXTENDED_HOST_PRD}
+  JAMAR_DB_MEC_EXTENDED_DATABASE:
+    dev: ${ssm:JAMAR_DB_MEC_EXTENDED_DATABASE_DEV}
+    qas: ${ssm:JAMAR_DB_MEC_EXTENDED_DATABASE_PRD}
+    prd: ${ssm:JAMAR_DB_MEC_EXTENDED_DATABASE_PRD}
+  JAMAR_DB_MEC_EXTENDED_USER:
+    dev: ${ssm:JAMAR_DB_MEC_EXTENDED_USER_DEV}
+    qas: ${ssm:JAMAR_DB_MEC_EXTENDED_USER_PRD}
+    prd: ${ssm:JAMAR_DB_MEC_EXTENDED_USER_PRD}
+  JAMAR_DB_MEC_EXTENDED_PASSWORD:
+    dev: ${ssm:JAMAR_DB_MEC_EXTENDED_PASSWORD_DEV}
+    qas: ${ssm:JAMAR_DB_MEC_EXTENDED_PASSWORD_PRD}
+    prd: ${ssm:JAMAR_DB_MEC_EXTENDED_PASSWORD_PRD}
+  JAMAR_DB_SEUS_HOST:
+    dev: ${ssm:JAMAR_DB_SEUS_HOST_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_HOST_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_HOST_PRD}
+  JAMAR_DB_SEUS_DATABASE:
+    dev: ${ssm:JAMAR_DB_SEUS_DATABASE_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_DATABASE_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_DATABASE_PRD}
+  JAMAR_DB_SEUS_USER:
+    dev: ${ssm:JAMAR_DB_SEUS_USER_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_USER_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_USER_PRD}
+  JAMAR_DB_SEUS_PASSWORD:
+    dev: ${ssm:JAMAR_DB_SEUS_PASSWORD_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_PASSWORD_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_PASSWORD_PRD}
+  JAMAR_DB_SEUS_DATABASE_JP:
+    dev: ${ssm:JAMAR_DB_SEUS_DATABASE_JP_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_DATABASE_JP_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_DATABASE_JP_PRD}
+  JAMAR_DB_SEUS_HOST_JP:
+    dev: ${ssm:JAMAR_DB_SEUS_HOST_JP_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_HOST_JP_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_HOST_JP_PRD}
+  JAMAR_DB_SEUS_PASSWORD_JP:
+    dev: ${ssm:JAMAR_DB_SEUS_PASSWORD_JP_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_PASSWORD_JP_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_PASSWORD_JP_PRD}
+  JAMAR_DB_SEUS_USER_JP:
+    dev: ${ssm:JAMAR_DB_SEUS_USER_JP_DEV}
+    qas: ${ssm:JAMAR_DB_SEUS_USER_JP_PRD}
+    prd: ${ssm:JAMAR_DB_SEUS_USER_JP_PRD}
+  MEMORYSIZE:
+    dev: 128
+    qas: 128
+    prd: 512
+functions:
+  api:
+    handler: dist/lambda.handler
+    vpc:
+      securityGroupIds:
+        - sg-061a0e3a3e65ad7f3
+      subnetIds:
+        - subnet-062608ece455a5dcc
+        - subnet-0d841902b0e42a389
+    events:
+      - http:
+          path: /
+          method: ANY
+      - http:
+          path: /{proxy+}
+          method: ANY
+    layers:
+      - arn:aws:lambda:us-east-1:864673161229:layer:nestjs-lambda-layer:1
+      - arn:aws:lambda:us-east-1:864673161229:layer:lambda-oracle-instant-client-laye:1
+    environment:
+      NODE_ENV: ${self:custom.NODE_ENV.${self:provider.stage}}
+      JAMAR_DB_MEC_EXTENDED_HOST: ${self:custom.JAMAR_DB_MEC_EXTENDED_HOST.${self:provider.stage}}
+      JAMAR_DB_MEC_EXTENDED_DATABASE: ${self:custom.JAMAR_DB_MEC_EXTENDED_DATABASE.${self:provider.stage}}
+      JAMAR_DB_MEC_EXTENDED_USER: ${self:custom.JAMAR_DB_MEC_EXTENDED_USER.${self:provider.stage}}
+      JAMAR_DB_MEC_EXTENDED_PASSWORD: ${self:custom.JAMAR_DB_MEC_EXTENDED_PASSWORD.${self:provider.stage}}
+      JAMAR_DB_SEUS_HOST: ${self:custom.JAMAR_DB_SEUS_HOST.${self:provider.stage}}
+      JAMAR_DB_SEUS_DATABASE: ${self:custom.JAMAR_DB_SEUS_DATABASE.${self:provider.stage}}
+      JAMAR_DB_SEUS_USER: ${self:custom.JAMAR_DB_SEUS_USER.${self:provider.stage}}
+      JAMAR_DB_SEUS_PASSWORD: ${self:custom.JAMAR_DB_SEUS_PASSWORD.${self:provider.stage}}
+      JAMAR_DB_SEUS_DATABASE_JP: ${self:custom.JAMAR_DB_SEUS_DATABASE_JP.${self:provider.stage}}
+      JAMAR_DB_SEUS_HOST_JP: ${self:custom.JAMAR_DB_SEUS_HOST_JP.${self:provider.stage}}
+      JAMAR_DB_SEUS_PASSWORD_JP: ${self:custom.JAMAR_DB_SEUS_PASSWORD_JP.${self:provider.stage}}
+      JAMAR_DB_SEUS_USER_JP: ${self:custom.JAMAR_DB_SEUS_USER_JP.${self:provider.stage}}
+plugins:
+  - serverless-stage-manager
