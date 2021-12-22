@@ -95,7 +95,7 @@ functions:
           path: /{proxy+}
           method: ANY
     layers:
-      - arn:aws:lambda:us-east-1:864673161229:layer:nestjs-lambda-layer:1
+      - arn:aws:lambda:us-east-1:864673161229:layer:nestjs-lambda-layer:2
       - arn:aws:lambda:us-east-1:864673161229:layer:lambda-oracle-instant-client-laye:1
     environment:
       NODE_ENV: ${self:custom.NODE_ENV.${self:provider.stage}}

@@ -1,6 +1,7 @@
 import AWS from 'aws-sdk'
 import fs from 'fs'
 import { isEmpty } from 'class-validator'
+import { decrypt, encrypt } from './services/functions.service'
 
 export const IS_LOCAL: boolean = Boolean(process.env.IS_LOCAL)
 export const NODE_ENV: string = process.env.NODE_ENV.trim().toUpperCase()
@@ -32,7 +33,7 @@ export async function getEnvironmentParam(name: string, notFoundName: string) {
         }
     }
     if (isEmpty(params[name])) {
-        await getSSMParam(notFoundName, name)
+        return await getSSMParam(notFoundName, name)
     }
     return params[name]
 }
@@ -43,7 +44,7 @@ function getEnvVariables() {
     if (file) {
         const vars = file.split(/\r\n|\n/).map(value => { return value.split(" = ") })
         vars.forEach(element => {
-            if (element[0] && element[1]) params[element[0].trim()] = element[1].trim()
+            if (element[0] && element[1]) params[element[0].trim()] = decrypt(element[1].trim())
         });
     }
     return params
@@ -56,13 +57,13 @@ async function getSSMParam(Name: string, envName: string) {
         try {
             const params = getEnvVariables()
             if (isEmpty(params)) {
-                fs.appendFileSync(".env", `${envName} = ${result.Parameter.Value}`)
+                fs.appendFileSync(".env", `${envName} = ${encrypt(result.Parameter.Value)}`)
             } else if (!Object.prototype.hasOwnProperty.call(params, envName)) {
-                fs.appendFileSync(".env", `\n${envName} = ${result.Parameter.Value}`)
+                fs.appendFileSync(".env", `\n${envName} = ${encrypt(result.Parameter.Value)}`)
             }
         } catch (error) {
             console.error("El archivo .env no existe, se creará", error)
-            fs.appendFileSync(".env", `${envName} = ${result.Parameter.Value}`)
+            fs.appendFileSync(".env", `${envName} = ${encrypt(result.Parameter.Value)}`)
         }
         return result.Parameter.Value
     }
