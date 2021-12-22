@@ -9,7 +9,7 @@ provider:
   iam:
     role: arn:aws:iam::864673161229:role/lambda_cron_rol
   memorySize: ${self:custom.MEMORYSIZE.${self:provider.stage}}
-  timeout: 900
+  timeout: 30
   deploymentBucket:
     name: app-vendedor-staging
 package:
