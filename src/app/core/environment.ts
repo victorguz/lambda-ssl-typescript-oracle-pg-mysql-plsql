@@ -5,6 +5,9 @@ import { decrypt, encrypt } from './services/functions.service'
 
 export const IS_LOCAL: boolean = Boolean(process.env.IS_LOCAL)
 export const NODE_ENV: string = process.env.NODE_ENV.trim().toUpperCase()
+export const POOL_ALIAS_JA = process.env.POOL_ALIAS ? process.env.POOL_ALIAS.trim() + "_JA" : "POOL_NESTJS_JA"
+export const POOL_ALIAS_JP = process.env.POOL_ALIAS ? process.env.POOL_ALIAS.trim() + "_JP" : "POOL_NESTJS_JP"
+export const MAX_POOL_CONNECTIONS = process.env.MAX_POOL_CONNECTIONS ? Number(process.env.MAX_POOL_CONNECTIONS) : 10
 
 const SSM = new AWS.SSM({ region: 'us-east-1' })
 

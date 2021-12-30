@@ -1,29 +1,44 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { isNotEmpty } from 'class-validator';
-import { environment, getEnvironmentParam, NODE_ENV } from 'src/app/core/environment';
-import oracle from 'oracledb';
+import { environment, getEnvironmentParam, IS_LOCAL, MAX_POOL_CONNECTIONS, NODE_ENV, POOL_ALIAS_JA, POOL_ALIAS_JP } from 'src/app/core/environment';
+import oracle, { getPool } from 'oracledb';
 import { JSONArrayToLowerCase } from './functions.service';
-oracle.poolTimeout = 60 //Duración de la sesión
+
+
 
 @Injectable()
 export class OracleService {
 
-  private static async getConnectionConfigJA(): Promise<oracle.ConnectionAttributes> {
-    const config = {
+  private static async getConnectionConfigJA(procedure: boolean = false): Promise<oracle.PoolAttributes> {
+    const config: oracle.PoolAttributes = {
       connectString: await getEnvironmentParam("JAMAR_DB_SEUS_HOST", `JAMAR_DB_SEUS_HOST_${NODE_ENV}`) + `:1521/` + await getEnvironmentParam("JAMAR_DB_SEUS_DATABASE", `JAMAR_DB_SEUS_DATABASE_${NODE_ENV}`),
       user: await getEnvironmentParam("JAMAR_DB_SEUS_USER", `JAMAR_DB_SEUS_USER_${NODE_ENV}`),
       password: await getEnvironmentParam("JAMAR_DB_SEUS_PASSWORD", `JAMAR_DB_SEUS_PASSWORD_${NODE_ENV}`),
+      poolAlias: POOL_ALIAS_JA,
+      poolMax: MAX_POOL_CONNECTIONS,
+      poolTimeout: procedure ? 900 : 60
     }
     return config
   }
 
-  private static async getConnectionConfigJP(): Promise<oracle.ConnectionAttributes> {
+  private static async getConnectionConfigJP(procedure: boolean = false): Promise<oracle.ConnectionAttributes> {
     const config = {
       connectString: await getEnvironmentParam("JAMAR_DB_SEUS_HOST_JP", `JAMAR_DB_SEUS_HOST_JP_${NODE_ENV}`) + `:1521/` + await getEnvironmentParam("JAMAR_DB_SEUS_DATABASE", `JAMAR_DB_SEUS_DATABASE_${NODE_ENV}`),
       user: await getEnvironmentParam("JAMAR_DB_SEUS_USER_JP", `JAMAR_DB_SEUS_USER_JP_${NODE_ENV}`),
       password: await getEnvironmentParam("JAMAR_DB_SEUS_PASSWORD_JP", `JAMAR_DB_SEUS_PASSWORD_JP_${NODE_ENV}`),
+      poolAlias: POOL_ALIAS_JP,
+      poolMax: MAX_POOL_CONNECTIONS,
+      poolTimeout: procedure ? 900 : 60
     }
     return config
+  }
+
+  private static async getConnectionConfig(company: "JA" | "JP", procedure: boolean = false): Promise<oracle.ConnectionAttributes> {
+    switch (company) {
+      case "JA": return await this.getConnectionConfigJA(procedure)
+      case "JP": return await this.getConnectionConfigJP(procedure)
+      default: throw new Error("Esta compañia no está permitida para conectarse a Oracle");
+    }
   }
 
   /**
@@ -33,32 +48,184 @@ export class OracleService {
    * @returns 
    */
   public static async query(company: "JA" | "JP" = "JA", query: string = "SELECT * FROM nits WHERE rownum <= 5") {
+    let conn: oracle.Connection | undefined = undefined
+    let pool: oracle.Pool
     query = query.trim()
     if (!isNotEmpty(query)) {
-      throw new Error("No se puede ejecutar una consulta vacía.");
+      throw new Error("No has especificado el query a ejecutar.");
     }
-    let config = await this.getConnectionConfigJA()
-    if (company == "JP") config = await this.getConnectionConfigJP()
-    const conn = await oracle.getConnection(config)
-    const result = await conn.execute(query, {}, { outFormat: oracle.OUT_FORMAT_OBJECT, autoCommit: true });
-    await conn.close()
-    environment.db.logs ? console.debug(query) : ""
-    return JSONArrayToLowerCase(result.rows);
+    try {
+      pool = await this.getPool(company);
+      conn = await pool.getConnection()
+      const result = await conn.execute(query, {}, { outFormat: oracle.OUT_FORMAT_OBJECT, autoCommit: true });
+      environment.db.logs ? console.debug(query) : ""
+      return JSONArrayToLowerCase(result.rows);
+    } catch (error) {
+      console.error(error)
+      throw new InternalServerErrorException({ stack: error.stack, error, message: error.stack.includes("TNS") ? "Error de conexión con VPN de Oracle" : "Error en la consulta a oracle" })
+    } finally {
+      if (conn) {
+        try {
+          await conn.close();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
   }
 
   /**
-   * Executes a Oracle PL/SQL procedure
-   * @param name procedure name (also use package name if necesary)
-   * @param params 
+   * 
+   * Ejecutar Oracle PL/SQL procedure
+   * 
+   * Example:
+   * 
+   * procedureDeclaration = "fvcbuscarparamsicf(:pe_vcemp, :pe_vcmodulo, :pe_vccodparamred, :ps_vcerrorm)"
+   * bindParameters = {
+   *     pe_vcemp:  'JA', //Primera forma de especificarlo
+   *     pe_vcmodulo: { val: '0002', dir: oracledb.BIND_IN }, ---//segunda forma de especificarlo
+   *     pe_vccodparamred: 'GC_DIAS_HIST',
+   *     ps_vcerrorm:  { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
+   * }
+   * @param company 
+   * @param procedureDeclaration procedure name with params (also use package name if necesary)
+   * @param bindParameters --> use node-oracledb documentation to know about bind parameters oracle.BindParameters
+   * @returns 
    */
-  public static async procedure(company: "JA" | "JP" = "JA", name: string, params: object) { }
+  public static async procedure(company: "JA" | "JP" = "JA", procedureDeclaration: string, bindParameters: oracle.BindParameters) {
+    let conn: oracle.Connection | undefined = undefined
+    let pool: oracle.Pool
+    if (!isNotEmpty(procedureDeclaration)) {
+      throw new Error("No has especificado el procedimiento a ejecutar.");
+    }
+    try {
+      const query = `BEGIN
+          ${procedureDeclaration};
+       END;`
+
+      pool = await this.getPool(company);
+      conn = await pool.getConnection()
+
+      const result = await conn.execute(query, bindParameters, { outFormat: oracle.OUT_FORMAT_OBJECT, autoCommit: true });
+      environment.db.logs ? console.debug(query) : ""
+      return result;
+    } catch (error) {
+      console.error(error)
+      throw this.getOracleError(error)
+    } finally {
+      if (conn) {
+        try {
+          await conn.close();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
+  }
 
   /**
-   * Executes a Oracle PL/SQL procedure
-   * @param name procedure name (also use package name if necesary)
-   * @param params 
+     * 
+     * Ejecutar Oracle PL/SQL procedure
+     * 
+     * Example:
+     * 
+     * functionDeclaration = "fvcbuscarparamsicf(:pe_vcemp, :pe_vcmodulo, :pe_vccodparamred, :ps_vcerrorm)"
+     * bindParameters = {
+     *     pe_vcemp:  'JA', //Primera forma de especificarlo
+     *     pe_vcmodulo: { val: '0002', dir: oracledb.BIND_IN }, ---//segunda forma de especificarlo
+     *     pe_vccodparamred: 'GC_DIAS_HIST',
+     *     ps_vcerrorm:  { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
+     * }
+     * @param company 
+     * @param functionDeclaration function name with params (also use package name if necesary)
+     * @param bindParameters --> use node-oracledb documentation to know about bind parameters oracle.BindParameters
+     * @returns 
+     */
+  public static async function(company: "JA" | "JP" = "JA", functionDeclaration: string, bindParameters: oracle.BindParameters) {
+    let conn: oracle.Connection | undefined = undefined
+    let pool: oracle.Pool
+    if (!isNotEmpty(functionDeclaration)) {
+      throw new Error("No has especificado el procedimiento a ejecutar.");
+    }
+    try {
+      const query = `BEGIN
+         :result := ${functionDeclaration};
+       END;`
+
+      pool = await this.getPool(company);
+      conn = await pool.getConnection()
+
+      const response = await conn.execute(query, { ...bindParameters, result: { dir: OracleService.BIND_OUT } }, { outFormat: oracle.OUT_FORMAT_OBJECT, autoCommit: true });
+      environment.db.logs ? console.debug(query) : ""
+      return response;
+    } catch (error) {
+      console.error(error)
+      throw this.getOracleError(error)
+    } finally {
+      if (conn) {
+        try {
+          await conn.close();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
+  }
+
+  private static getPoolAlias(company: "JA" | "JP" = "JA") {
+    switch (company) {
+      case "JA": return POOL_ALIAS_JA
+      case "JP": return POOL_ALIAS_JP
+      default: throw new InternalServerErrorException("No se reconoce esta compañia");
+    }
+  }
+
+  /**
+   * Gestiona la creacion o reutilizacion del pool de conexion
+   * @param company 
+   * @returns 
    */
-  public async procedure(company: "JA" | "JP" = "JA", name: string, params: object) { }
+  private static async getPool(company: "JA" | "JP" = "JA", procedure: boolean = false): Promise<oracle.Pool> {
+    const pool_alias = this.getPoolAlias(company)
+    try {
+      console.debug("Reutilizando Pool de Oracle")
+      const pool = oracle.getPool(pool_alias)
+      return pool
+    } catch (error) {
+      const err = this.getOracleError(error)
+      if (err.message.includes("No se encontró el POOL")) {
+        console.debug("Creando Pool de Oracle")
+        const pool = oracle.createPool(await this.getConnectionConfig(company, procedure))
+        return pool
+      } else {
+        console.error(err)
+        throw new InternalServerErrorException(err);
+      }
+    }
+  }
+
+  /**
+   * 
+   * Ejecutar Oracle PL/SQL procedure
+   * 
+   * Example:
+   * 
+   * procedureDeclaration = "fvcbuscarparamsicf(:pe_vcemp, :pe_vcmodulo, :pe_vccodparamred, :ps_vcerrorm)"
+   * bindParameters = {
+   *     pe_vcemp:  'JA', //Primera forma de especificarlo
+   *     pe_vcmodulo: { val: '0002', dir: oracledb.BIND_IN }, ---//segunda forma de especificarlo
+   *     pe_vccodparamred: 'GC_DIAS_HIST',
+   *     ps_vcerrorm:  { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
+   * }
+   * @param company 
+   * @param procedureDeclaration procedure name with params (also use package name if necesary)
+   * @param bindParameters --> use node-oracledb documentation to know about bind parameters oracle.BindParameters
+   * @returns 
+   */
+  public async procedure(company: "JA" | "JP" = "JA", procedureDeclaration: string, bindParameters: oracle.BindParameters) {
+    return await OracleService.procedure(company, procedureDeclaration, bindParameters)
+  }
+
 
   /**
     * Execute an Oracle query
@@ -67,16 +234,22 @@ export class OracleService {
     * @returns 
     */
   public async query(company: "JA" | "JP" = "JA", query: string = "SELECT * FROM nits WHERE rownum <= 50000") {
-    query = query.trim()
-    if (!isNotEmpty(query)) {
-      throw new Error("No se puede ejecutar una consulta vacía.");
-    }
-    let config = await OracleService.getConnectionConfigJA()
-    if (company == "JP") config = await OracleService.getConnectionConfigJP()
-    const conn = await oracle.getConnection(config)
-    const result = await conn.execute(query, {}, { outFormat: oracle.OUT_FORMAT_OBJECT, autoCommit: true });
-    await conn.close()
-    environment.db.logs ? console.debug(query) : ""
-    return JSONArrayToLowerCase(result.rows);
+    return await OracleService.query(company, query)
   }
+
+  private static getOracleError(error, company: "JA" | "JP" = "JA"): InternalServerErrorException {
+    let message = "Error al consultar la base de datos Oracle"
+    if (error.stack.includes("TNS")) message = IS_LOCAL ? "Debe conectarse a la VPN de Oracle" : error.stack
+    if (error.stack.includes("not found in the connection pool cache")) message = `No se encontró el POOL de conexión llamado '${this.getPoolAlias(company)}' en el caché de conexiones.`
+    const newError = {
+      message,
+      error,
+      stack: error.stack,
+    }
+    return new InternalServerErrorException(newError)
+  }
+
+  public static BIND_OUT = oracle.BIND_OUT
+  public static BIND_IN = oracle.BIND_IN
+  public static BIND_INOUT = oracle.BIND_INOUT
 }

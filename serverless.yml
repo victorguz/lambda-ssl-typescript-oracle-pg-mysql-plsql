@@ -26,6 +26,8 @@ custom:
     dev: dev
     qas: qas
     prd: prd
+  POOL_ALIAS: ${self:service}
+  # MAX_POOL_CONNECTION: 40
   JAMAR_DB_MEC_EXTENDED_HOST:
     dev: ${ssm:JAMAR_DB_MEC_EXTENDED_HOST_DEV}
     qas: ${ssm:JAMAR_DB_MEC_EXTENDED_HOST_PRD}
@@ -99,6 +101,8 @@ functions:
       - arn:aws:lambda:us-east-1:864673161229:layer:lambda-oracle-instant-client-laye:1
     environment:
       NODE_ENV: ${self:custom.NODE_ENV.${self:provider.stage}}
+      POOL_ALIAS: ${self:custom.POOL_ALIAS}
+      MAX_POOL_CONNECTIONS: 10
       JAMAR_DB_MEC_EXTENDED_HOST: ${self:custom.JAMAR_DB_MEC_EXTENDED_HOST.${self:provider.stage}}
       JAMAR_DB_MEC_EXTENDED_DATABASE: ${self:custom.JAMAR_DB_MEC_EXTENDED_DATABASE.${self:provider.stage}}
       JAMAR_DB_MEC_EXTENDED_USER: ${self:custom.JAMAR_DB_MEC_EXTENDED_USER.${self:provider.stage}}
