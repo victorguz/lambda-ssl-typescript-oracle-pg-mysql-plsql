@@ -3,6 +3,7 @@ import { ConfigType } from '@nestjs/config';
 import { isNotEmpty } from 'class-validator';
 import * as mysql from 'mysql2';
 import { environment } from 'src/app/core/environment';
+import { BasicResponse } from '../models/basic-response.model';
 
 @Injectable()
 export class MySqlService {
@@ -17,26 +18,32 @@ export class MySqlService {
   }
 
   public static async query(query: string) {
-    query = query.trim()
-    if (!isNotEmpty(query)) {
-      throw new Error("No se puede ejecutar una consulta vacía.");
+    let conn
+    try {
+      query = query.trim()
+      if (!isNotEmpty(query)) {
+        throw new Error("No se puede ejecutar una consulta vacía.");
+      }
+      conn = mysql.createPool(this.connection).promise();
+      const [rows, fields] = await conn.query(query);
+      environment.db.logs ? console.debug(query) : ""
+      return new BasicResponse(true, "Consulta exitosa", rows);
+    } catch (error) {
+      console.error(error, error.stack)
+      return new BasicResponse(false, error.message, undefined, error.stack);
+    } finally {
+      if (conn) {
+        try {
+          await conn.end()
+        } catch (error) {
+          console.error(error, error.stack)
+          return new BasicResponse(false, "Error cerrando la sesión de MySQL", undefined, error)
+        }
+      }
     }
-    const conn = mysql.createPool(this.connection).promise();
-    const [rows, fields] = await conn.query(query);
-    await conn.end()
-    environment.db.logs ? console.debug(query) : ""
-    return rows;
   }
 
   async query(query: string) {
-    query = query.trim()
-    if (!isNotEmpty(query)) {
-      throw new Error("No se puede ejecutar una consulta vacía.");
-    }
-    const conn = mysql.createPool(MySqlService.connection).promise();
-    const [rows, fields] = await conn.query(query);
-    await conn.end()
-    environment.db.logs ? console.debug(query) : ""
-    return rows;
+    return await MySqlService.query(query)
   }
 }

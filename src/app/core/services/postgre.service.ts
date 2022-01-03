@@ -4,6 +4,7 @@ import { isNotEmpty } from 'class-validator';
 import { Pool, PoolConfig, QueryArrayResult } from 'pg';
 import pg from 'pg';
 import { environment, getEnvironmentParam, NODE_ENV } from 'src/app/core/environment';
+import { BasicResponse } from '../models/basic-response.model';
 
 @Injectable()
 export class PostgreService {
@@ -25,20 +26,28 @@ export class PostgreService {
   }
 
   public static async query(query: string = "SELECT * FROM products LIMIT 5") {
+    let conn
     try {
       query = query.trim()
       if (!isNotEmpty(query)) {
         throw new Error("No se puede ejecutar una consulta vacía.");
       }
-      const conn = new Pool(await this.getConnectionConfig())
+      conn = new Pool(await this.getConnectionConfig())
       const { fields, rows } = await conn.query(query);
-      await conn.end()
-      console.log(rows)
       environment.db.logs ? console.debug(query) : ""
-      return rows;
+      return new BasicResponse(true, "Consulta exitosa", rows);
     } catch (error) {
-      console.error(error)
-      throw new InternalServerErrorException({ stack: error.stack, error, message: "Error en la consulta a postgre" })
+      console.error(error, error.stack)
+      return new BasicResponse(false, "Error en la consulta a postgre", undefined, { stack: error.stack, err: error })
+    } finally {
+      if (conn) {
+        try {
+          await conn.end()
+        } catch (error) {
+          console.error(error, error.stack)
+          return new BasicResponse(false, "Error cerrando la sesión de MySQL", undefined, error)
+        }
+      }
     }
   }
 

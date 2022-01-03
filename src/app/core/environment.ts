@@ -11,7 +11,7 @@ export const MAX_POOL_CONNECTIONS = process.env.MAX_POOL_CONNECTIONS ? Number(pr
 
 const SSM = new AWS.SSM({ region: 'us-east-1' })
 
-export async function getEnvironmentParam(name: string, notFoundName: string) {
+export async function getEnvironmentParam(name: string, notFoundName: string = name) {
     name = name.trim().toUpperCase()
     notFoundName = notFoundName.trim().toUpperCase()
     let params: any = {
@@ -27,12 +27,16 @@ export async function getEnvironmentParam(name: string, notFoundName: string) {
         JAMAR_DB_SEUS_HOST_JP: process.env.JAMAR_DB_SEUS_HOST_JP,
         JAMAR_DB_SEUS_PASSWORD_JP: process.env.JAMAR_DB_SEUS_PASSWORD_JP,
         JAMAR_DB_SEUS_USER_JP: process.env.JAMAR_DB_SEUS_USER_JP,
+        JAMAR_JWT_KEY: process.env.JAMAR_JWT_KEY,
+        JAMAR_APP_KEY: process.env.JAMAR_APP_KEY,
+        JAMAR_SECRET_KEY: process.env.JAMAR_SECRET_KEY,
+        JAMAR_DOMAIN: process.env.JAMAR_DOMAIN,
     }
     if (IS_LOCAL) {
         try {
             params = getEnvVariables()
         } catch (error) {
-            console.log(error)
+            console.error(error)
         }
     }
     if (isEmpty(params[name])) {
@@ -78,7 +82,7 @@ async function getSSMParam(Name: string, envName: string) {
 export const environment = {
     name: NODE_ENV + (IS_LOCAL ? "_local" : ""),
     app_port: 3000,
-    secret_key: "!#,adhjd!#;asd67,q;2evk,abda$!#$#$",
+    secret_key: "dff5091000396f57ed039129a4e5472b",
     db: {
         logs: true,
     }
