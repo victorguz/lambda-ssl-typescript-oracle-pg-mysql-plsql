@@ -11,7 +11,7 @@ Para ejecutar el proyecto en local, utilice `npm install` y luego `npm run start
 ## build
 
 Este proyecto utiliza Serverless para hacer deploy en AWS Lambda.
-Por lo cual requiere que instale AWS Cli (vea la documentación web) y serverless de manera global.
+Por lo cual requiere que instale `AWS Cli` (vea la documentación web) y `serverless` de manera global.
 
 También debe contar credenciales de acceso IAM proporcionadas por AWS y los roles de permisos necesarios.
 
@@ -19,5 +19,5 @@ Utilice `npm run deploy:dev:force` para publicar sus cambios la primera vez (est
 
 ## A tener en cuenta:
 
-- **Pool Timeout:** Nos conectamos a ``oracle`` a traves de un pool que tiene un timeout de 60 segundos. Lo que quiere decir que si la conexión no está en uso, transcurridos los 60 segundos se cerrará la sesión del pool.
+- **Pool Timeout:** Nos conectamos a `oracle` a traves de un pool que tiene un timeout de 60 segundos. Lo que quiere decir que si la conexión no está en uso, transcurridos los 60 segundos se cerrará la sesión del pool.
 - **:**
