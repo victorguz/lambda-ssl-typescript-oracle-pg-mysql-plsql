@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { isArray, isEmpty, isNotEmptyObject, isObject, isNotEmpty, isString } from 'class-validator';
 import { MAX_RECORDS_TO_TAKE } from 'src/app/core/constants.config';
 import { QueryOrderByDto } from '../dtos/query-orderby.dto';
@@ -18,7 +18,7 @@ export class QueriesService {
   private _company: "JA" | "JP";
   private _columns: string[];
   private _where: string;
-  private _orderby: QueryOrderByDto[];
+  private _orderby: string;
   private _values: object;
   private _limit: number;
   private _offset: number;
@@ -200,22 +200,17 @@ export class QueriesService {
      * @param orderby QueryOrderBy[]
      * @returns QueriesService2
      */
-  orderBy(orderby: QueryOrderByDto[] | QueryOrderByDto | object): QueriesService {
-    if (Array.isArray(orderby)) {
+  orderBy(orderby: object): QueriesService {
+    if (isString(orderby)) {
       this._orderby = orderby
-    } else if (orderby instanceof QueryOrderByDto && !Array.isArray(orderby)) {
-      this._orderby = [orderby]
-    } else if (isNotEmptyObject(orderby) && isNotEmpty(orderby)) {
-      let newOrderBy: QueryOrderByDto = { column: "", order: "" };
+    } else if (isObject(orderby) && isNotEmptyObject(orderby) && isNotEmpty(orderby)) {
       for (const key in orderby) {
         if (Object.prototype.hasOwnProperty.call(orderby, key)) {
           const value = orderby[key];
-          newOrderBy.column = key
-          newOrderBy.order = value
           if (this._orderby) {
-            this._orderby.push(newOrderBy)
+            this._orderby += ` ${key} ${value} `
           } else {
-            this._orderby = [newOrderBy]
+            this._orderby = ` ${key} ${value} `
           }
         }
       }
@@ -252,7 +247,7 @@ export class QueriesService {
   clear() {
     this._table = "";
     this._columns = ["*"];
-    this._orderby = []
+    this._orderby = ""
     this._where = "";
     this._values = {};
     this._limit = 0;
@@ -318,7 +313,6 @@ export class QueriesService {
   }
 
   private async _select(): Promise<BasicResponse> {
-    const orderbyString = isArray(this._orderby) ? this._orderby.map(v => QueryOrderByDto.asString(v)).join(", ").trim() : ""
     const selectString = this._columns.length > 0 ? this._columns.join(", ").trim() : "*"
 
     //En caso de ser oracle y tener limit
@@ -329,7 +323,7 @@ export class QueriesService {
     const query = ` SELECT ${selectString} ` +
       ` FROM ${this._table} ` +
       ` ${isNotEmpty(this._where) ? `WHERE ${this._where}` : ""} ` +
-      ` ORDER BY ${orderbyString != "" ? orderbyString : "id desc"} ` +
+      ` ORDER BY ${this._orderby != "" ? this._orderby : "1"} ` +
       (this.isOracle() ? "" : ` ${this._limit && this._limit > 0 ? ` LIMIT ${this._limit}` : ""} 
         ${this._offset && this._offset > 0 ? ` OFFSET ${this._offset}` : ""} `);
     if (this.getOnlySQL) {
@@ -396,12 +390,19 @@ export class QueriesService {
 
   private async _makeQuery(query: string) {
     query = query.trim()
+    let result: BasicResponse = new BasicResponse(false, `Error por defecto de QueriesService`)
     switch (this._database) {
-      case 'mysql': return await MySqlService.query(query);
-      case 'oracle': return await OracleService.query(this._company, query);
-      case 'postgre': return await PostgreService.query(query);
-      case 'mysql': return await MySqlService.query(query);
-      default: return new BasicResponse(false, `Base de datos seleccionada es incorrecta '${this._database}'`)
+      case 'mysql': result = await MySqlService.query(query); break;
+      case 'oracle': result = await OracleService.query(this._company, query); break;
+      case 'postgre': result = await PostgreService.query(query); break;
+      case 'mysql': result = await MySqlService.query(query); break;
+      default: result = new BasicResponse(false, `Base de datos seleccionada es incorrecta '${this._database}'`)
+    }
+    if (result.success) {
+      return result
+    } else {
+      throw new InternalServerErrorException(result);
+
     }
   }
   private async _query() {
